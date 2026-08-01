@@ -3,6 +3,8 @@ name: Auto Release on PR Merge
 on:
   pull_request:
     types: [closed]
+    branches:
+      - master # Only trigger when the target branch of the PR is 'master'
 
 jobs:
   draft-release:
