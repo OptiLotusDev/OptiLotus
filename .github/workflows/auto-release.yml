@@ -19,7 +19,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch all tags to determine previous version
+          fetch-depth: 0 # Fetch all history and tags
+
+      - name: Fetch All Remote Tags
+        run: git fetch --tags --force
 
       - name: Determine Bump Type from Labels
         id: bump_type
@@ -44,12 +47,17 @@ jobs:
         run: |
           # Get latest tag or default to v0.0.0
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
+          echo "Latest tag found: $LATEST_TAG"
 
           # Strip leading 'v'
           VERSION="${LATEST_TAG#v}"
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Fallbacks in case tags were missing or malformed
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
 
           case "${{ steps.bump_type.outputs.type }}" in
             major)

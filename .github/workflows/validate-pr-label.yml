@@ -2,7 +2,12 @@ name: Validate PR Release Label
 
 on:
   pull_request:
-    types: [opened, labeled, unlabeled, synchronize]
+    types: [opened, labeled, unlabeled]
+
+# Cancels previous runs on the same PR if a new label event is triggered rapidly
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check-release-label:
