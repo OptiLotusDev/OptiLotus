@@ -4,10 +4,13 @@ on:
   pull_request:
     types: [opened, labeled, unlabeled]
 
-# Cancels previous runs on the same PR if a new label event is triggered rapidly
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: validate-label-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   check-release-label:
@@ -15,27 +18,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify Release Label Selection
+        env:
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
-          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
-          echo "Applied labels: $LABELS"
+          # Parse exact string matches safely using jq to avoid shell injection and regex false positives
+          HAS_PATCH=$(echo "$LABELS_JSON" | jq -r 'contains(["patch"])')
+          HAS_MINOR=$(echo "$LABELS_JSON" | jq -r 'contains(["minor"])')
+          HAS_MAJOR=$(echo "$LABELS_JSON" | jq -r 'contains(["major"])')
+          HAS_SKIP=$(echo "$LABELS_JSON" | jq -r 'contains(["skip release"])')
 
-          HAS_PATCH=$(echo "$LABELS" | grep -iq "\bpatch\b" && echo "yes" || echo "no")
-          HAS_MINOR=$(echo "$LABELS" | grep -iq "\bminor\b" && echo "yes" || echo "no")
-          HAS_MAJOR=$(echo "$LABELS" | grep -iq "\bmajor\b" && echo "yes" || echo "no")
-          HAS_SKIP=$(echo "$LABELS" | grep -iq "\bskip release\b" && echo "yes" || echo "no")
-
-          # Count how many of the required labels are applied
           COUNT=0
-          [ "$HAS_PATCH" = "yes" ] && COUNT=$((COUNT + 1))
-          [ "$HAS_MINOR" = "yes" ] && COUNT=$((COUNT + 1))
-          [ "$HAS_MAJOR" = "yes" ] && COUNT=$((COUNT + 1))
-          [ "$HAS_SKIP" = "yes" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_PATCH" = "true" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_MINOR" = "true" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_MAJOR" = "true" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_SKIP" = "true" ] && COUNT=$((COUNT + 1))
 
           if [ $COUNT -eq 0 ]; then
-            echo "::error::PR is missing a release label! Please apply exactly ONE of: 'patch', 'minor', 'major', or 'skip release'."
+            echo "::error::PR is missing a release label! Apply exactly ONE of: 'patch', 'minor', 'major', or 'skip release'."
             exit 1
           elif [ $COUNT -gt 1 ]; then
-            echo "::error::PR has multiple release labels applied! Please select ONLY ONE: 'patch', 'minor', 'major', or 'skip release'."
+            echo "::error::PR has multiple release labels applied! Select ONLY ONE."
             exit 1
           else
             echo "Valid release label configured correctly."

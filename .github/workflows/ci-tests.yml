@@ -4,37 +4,39 @@ on:
   pull_request:
     branches: [ master ]
 
+concurrency:
+  group: ci-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test-matrix:
     name: Test (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false # Keeps other jobs running if one fails
+      fail-fast: false
       matrix:
         include:
-          - target: "Desktop & Common"
+          - target: "Linux & Common"
             os: ubuntu-latest
-            task: "./gradlew desktopTest commonTest"
-
+            task: "./gradlew :shared:allTests -Pkotlin.native.ignoreDisabledTargets=true"
           - target: "macOS & iOS"
             os: macos-latest
-            task: "./gradlew macosX64Test macosArm64Test iosSimulatorArm64Test"
+            task: "./gradlew :shared:allTests"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.2.2
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # Handles Gradle wrapper setup and optimal dependency/build caching
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4.2.0
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Run Tests
+      - name: Run Target Tests
         run: ${{ matrix.task }}
