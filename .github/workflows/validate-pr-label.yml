@@ -1,0 +1,37 @@
+name: Validate PR Release Label
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize]
+
+jobs:
+  check-release-label:
+    name: Require Release Label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Release Label Selection
+        run: |
+          LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          echo "Applied labels: $LABELS"
+
+          HAS_PATCH=$(echo "$LABELS" | grep -iq "\bpatch\b" && echo "yes" || echo "no")
+          HAS_MINOR=$(echo "$LABELS" | grep -iq "\bminor\b" && echo "yes" || echo "no")
+          HAS_MAJOR=$(echo "$LABELS" | grep -iq "\bmajor\b" && echo "yes" || echo "no")
+          HAS_SKIP=$(echo "$LABELS" | grep -iq "\bskip release\b" && echo "yes" || echo "no")
+
+          # Count how many of the required labels are applied
+          COUNT=0
+          [ "$HAS_PATCH" = "yes" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_MINOR" = "yes" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_MAJOR" = "yes" ] && COUNT=$((COUNT + 1))
+          [ "$HAS_SKIP" = "yes" ] && COUNT=$((COUNT + 1))
+
+          if [ $COUNT -eq 0 ]; then
+            echo "::error::PR is missing a release label! Please apply exactly ONE of: 'patch', 'minor', 'major', or 'skip release'."
+            exit 1
+          elif [ $COUNT -gt 1 ]; then
+            echo "::error::PR has multiple release labels applied! Please select ONLY ONE: 'patch', 'minor', 'major', or 'skip release'."
+            exit 1
+          else
+            echo "Valid release label configured correctly."
+          fi

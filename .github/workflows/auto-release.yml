@@ -32,7 +32,7 @@ jobs:
           elif echo "$LABELS" | grep -iq "\bpatch\b"; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
-            echo "No relevant release labels found on PR. Skipping release creation."
+            echo "Release skipped via 'skip release' label or no version label present."
             echo "type=none" >> $GITHUB_OUTPUT
           fi
 
