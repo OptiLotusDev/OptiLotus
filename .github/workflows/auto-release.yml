@@ -81,10 +81,11 @@ jobs:
         if: steps.bump_type.outputs.type != 'none'
         uses: softprops/action-gh-release@v2.2.1
         with:
+          # A PAT is required: events created via GITHUB_TOKEN do not trigger
+          # other workflows, so release: published would never fire.
+          token: ${{ secrets.RELEASE_PAT }}
           tag_name: ${{ steps.semver.outputs.new_tag }}
           name: Release ${{ steps.semver.outputs.new_tag }}
           target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
