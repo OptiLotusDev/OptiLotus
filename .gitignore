@@ -17,7 +17,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+keystore/
 *.jks
-!keystore/optilotus-release.jks
 *.keystore
 *.p12

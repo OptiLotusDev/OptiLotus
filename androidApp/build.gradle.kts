@@ -1,6 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.io.FileInputStream
-import java.util.Properties
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -34,24 +32,14 @@ android {
         versionName = project.findProperty("versionName") as? String ?: "1.0"
     }
 
-    // Signing credentials come from keystore/keystore.properties (committed, shared by the whole team)
-    // and can be overridden per-build via SIGNING_KEYSTORE_PATH / SIGNING_STORE_PASSWORD /
-    // SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD environment variables.
-    val keystoreProps = Properties().apply {
-        val propsFile = rootProject.file("keystore/keystore.properties")
-        if (propsFile.exists()) {
-            FileInputStream(propsFile).use { load(it) }
-        }
-    }
     val signingKeystorePath = System.getenv("SIGNING_KEYSTORE_PATH")
-        ?: keystoreProps.getProperty("storeFile")
     if (signingKeystorePath != null) {
         signingConfigs {
             create("release") {
                 storeFile = file(signingKeystorePath)
-                storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: keystoreProps.getProperty("storePassword")
-                keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: keystoreProps.getProperty("keyAlias")
-                keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: keystoreProps.getProperty("keyPassword")
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
             }
         }
     }
