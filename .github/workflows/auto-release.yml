@@ -33,11 +33,11 @@ jobs:
         env:
           LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
-          if echo "$LABELS_JSON" | jq -e 'contains(["major"])' > /dev/null; then
+          if echo "$LABELS_JSON" | jq -e 'any(. == "major")' > /dev/null; then
             echo "type=major" >> $GITHUB_OUTPUT
-          elif echo "$LABELS_JSON" | jq -e 'contains(["minor"])' > /dev/null; then
+          elif echo "$LABELS_JSON" | jq -e 'any(. == "minor")' > /dev/null; then
             echo "type=minor" >> $GITHUB_OUTPUT
-          elif echo "$LABELS_JSON" | jq -e 'contains(["patch"])' > /dev/null; then
+          elif echo "$LABELS_JSON" | jq -e 'any(. == "patch")' > /dev/null; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
             echo "Release skipped via label selection."
@@ -48,7 +48,10 @@ jobs:
         if: steps.bump_type.outputs.type != 'none'
         id: semver
         run: |
-          LATEST_TAG=$(git describe --tags --match "v[0-9]*.[0-9]*.[0-9]*" --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # git describe --match is a glob, not a regex: v1.2.3-rc1 would match and
+          # break the version arithmetic. Filter tags to strict SemVer with a regex instead.
+          LATEST_TAG=$(git tag --list --sort=-version:refname 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+          LATEST_TAG=${LATEST_TAG:-v0.0.0}
           echo "Latest SemVer tag: $LATEST_TAG"
 
           VERSION="${LATEST_TAG#v}"
@@ -80,7 +83,7 @@ jobs:
         with:
           tag_name: ${{ steps.semver.outputs.new_tag }}
           name: Release ${{ steps.semver.outputs.new_tag }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:

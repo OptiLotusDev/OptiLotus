@@ -22,10 +22,10 @@ jobs:
           LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
           # Parse exact string matches safely using jq to avoid shell injection and regex false positives
-          HAS_PATCH=$(echo "$LABELS_JSON" | jq -r 'contains(["patch"])')
-          HAS_MINOR=$(echo "$LABELS_JSON" | jq -r 'contains(["minor"])')
-          HAS_MAJOR=$(echo "$LABELS_JSON" | jq -r 'contains(["major"])')
-          HAS_SKIP=$(echo "$LABELS_JSON" | jq -r 'contains(["skip release"])')
+          HAS_PATCH=$(echo "$LABELS_JSON" | jq -r 'any(. == "patch")')
+          HAS_MINOR=$(echo "$LABELS_JSON" | jq -r 'any(. == "minor")')
+          HAS_MAJOR=$(echo "$LABELS_JSON" | jq -r 'any(. == "major")')
+          HAS_SKIP=$(echo "$LABELS_JSON" | jq -r 'any(. == "skip release")')
 
           COUNT=0
           [ "$HAS_PATCH" = "true" ] && COUNT=$((COUNT + 1))

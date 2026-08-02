@@ -5,8 +5,6 @@ on:
     branches:
       - master
 
-  pull_request:
-
 permissions:
   contents: read
 
@@ -22,17 +20,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
 
       - name: Run common/JVM tests
         run: ./gradlew :shared:jvmTest
@@ -44,17 +39,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
 
       - name: Run Android tests
         run: ./gradlew :shared:testAndroidHostTest :androidApp:testDebugUnitTest
@@ -66,17 +58,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
 
       - name: Run Desktop tests
         run: ./gradlew :desktopApp:test
@@ -88,17 +77,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
 
       - name: Run JS tests
         run: ./gradlew :webApp:jsBrowserTest
@@ -110,17 +96,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
 
       - name: Run WASM tests
         run: ./gradlew :webApp:wasmJsBrowserTest
@@ -132,17 +115,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4.7.0
         with:
           distribution: temurin
           java-version: "17"
           cache: gradle
-
-      - name: Make Gradle executable
-        run: chmod +x gradlew
 
       - name: Run iOS tests
         run: ./gradlew :shared:iosSimulatorArm64Test

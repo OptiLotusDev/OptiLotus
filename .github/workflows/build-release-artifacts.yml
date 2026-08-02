@@ -23,20 +23,32 @@ jobs:
             platform: linux
             arch: x64
             task: packageDeb
-            artifact_src: "build/compose/binaries/main/deb/*.deb"
+            artifact_src: "desktopApp/build/compose/binaries/main/deb/*.deb"
             artifact_name: "OptiLotus-linux-x64.deb"
+          - os: ubuntu-26.04-arm
+            platform: linux
+            arch: arm64
+            task: packageDeb
+            artifact_src: "desktopApp/build/compose/binaries/main/deb/*.deb"
+            artifact_name: "OptiLotus-linux-arm64.deb"
           - os: windows-latest
             platform: windows
             arch: x64
             task: packageMsi
-            artifact_src: "build/compose/binaries/main/msi/*.msi"
+            artifact_src: "desktopApp/build/compose/binaries/main/msi/*.msi"
             artifact_name: "OptiLotus-windows-x64.msi"
-          - os: macos-latest
+          - os: macos-26
             platform: macos
             arch: arm64
             task: packageDmg
-            artifact_src: "build/compose/binaries/main/dmg/*.dmg"
+            artifact_src: "desktopApp/build/compose/binaries/main/dmg/*.dmg"
             artifact_name: "OptiLotus-macos-arm64.dmg"
+          - os: macos-26-intel
+            platform: macos
+            arch: x64
+            task: packageDmg
+            artifact_src: "desktopApp/build/compose/binaries/main/dmg/*.dmg"
+            artifact_name: "OptiLotus-macos-x64.dmg"
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -51,7 +63,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4.2.0
 
       - name: Build Package
-        run: ./gradlew ${{ matrix.task }}
+        shell: bash
+        run: ./gradlew :desktopApp:${{ matrix.task }} -PversionName="${GITHUB_REF_NAME#v}"
 
       - name: Rename Artifact for Unique Upload
         shell: bash
@@ -85,9 +98,35 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4.2.0
 
-      # Builds the release APK (change to :composeApp:assembleRelease if using Compose Multiplatform structure)
+      - name: Compute Version from Tag
+        id: ver
+        run: |
+          VERSION_NAME="${GITHUB_REF_NAME#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NAME"
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Set Up Signing Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Secret ANDROID_KEYSTORE_BASE64 is not set. The release APK would be unsigned and uninstallable."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/optilotus-release.jks"
+
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/optilotus-release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew :androidApp:assembleRelease \
+            -PversionCode=${{ steps.ver.outputs.version_code }} \
+            -PversionName=${{ steps.ver.outputs.version_name }}
 
       - name: Locate and Rename Release APK
         run: |
@@ -108,7 +147,7 @@ jobs:
 
   build-ios-framework:
     name: Build iOS Framework Zip
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4.2.2
 
@@ -122,17 +161,48 @@ jobs:
         uses: gradle/actions/setup-gradle@v4.2.0
 
       - name: Build XCFramework
-        run: ./gradlew assembleSharedXCFramework
+        run: ./gradlew :shared:assembleSharedXCFramework
 
       - name: Zip XCFramework
         run: |
           cd shared/build/XCFrameworks/release
-          zip -r ../../../OptiLotus-ios-xcframework.zip shared.xcframework
+          zip -ry ../../../../OptiLotus-ios-xcframework.zip Shared.xcframework
 
       - name: Upload iOS Framework to Release
         uses: softprops/action-gh-release@v2.2.1
         with:
           files: OptiLotus-ios-xcframework.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-web:
+    name: Build Web (WASM) Distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.2.0
+
+      - name: Build WASM Distribution
+        run: ./gradlew :webApp:wasmJsBrowserDistribution
+
+      - name: Zip Web Distribution
+        run: |
+          cd webApp/build/dist/wasmJs
+          zip -r ../../../../OptiLotus-web-wasm.zip productionExecutable
+
+      - name: Upload Web Distribution to Release
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          files: OptiLotus-web-wasm.zip
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
