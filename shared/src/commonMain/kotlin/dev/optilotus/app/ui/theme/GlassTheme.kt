@@ -59,7 +59,7 @@ fun Modifier.glassSurface(
     return this
         .shadow(elevation = elevation, shape = shape, clip = false)
         .clip(shape)
-        .background(Brush.linearGradient(listOf(tint.copy(alpha = 0.82f), tint.copy(alpha = 0.64f))), shape)
+        .background(Brush.linearGradient(listOf(tint.copy(alpha = 0.88f), tint.copy(alpha = 0.70f))), shape)
         .then(border)
 }
 
