@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.optilotus.app.ui.shared.GlyphIconButton
 import dev.optilotus.app.ui.state.BlockProgramStateHolder
 import dev.optilotus.app.ui.state.BlockProgramUiState
 import dev.optilotus.app.ui.theme.Error
