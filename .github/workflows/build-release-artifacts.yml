@@ -38,13 +38,13 @@ jobs:
             task: packageMsi
             artifact_src: "desktopApp/build/compose/binaries/main/msi/*.msi"
             artifact_name: "OptiLotus-windows-x64.msi"
-          - os: macos-15
+          - os: macos-26
             platform: macos
             arch: arm64
             task: packageDmg
             artifact_src: "desktopApp/build/compose/binaries/main/dmg/*.dmg"
             artifact_name: "OptiLotus-macos-arm64.dmg"
-          - os: macos-15-intel
+          - os: macos-26-intel
             platform: macos
             arch: x64
             task: packageDmg
@@ -65,15 +65,7 @@ jobs:
 
       - name: Build Package
         shell: bash
-        run: |
-          for attempt in 1 2 3; do
-            if ./gradlew :desktopApp:${{ matrix.task }} -PversionName="${GITHUB_REF_NAME#v}"; then
-              exit 0
-            fi
-            echo "Attempt ${attempt} failed (hdiutil 'Resource busy' is transient on macOS runners); retrying..."
-            sleep 15
-          done
-          exit 1
+        run: ./gradlew :desktopApp:${{ matrix.task }} -PversionName="${GITHUB_REF_NAME#v}"
 
       - name: Rename Artifact for Unique Upload
         shell: bash
