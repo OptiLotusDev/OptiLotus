@@ -12,19 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  test-matrix:
-    name: Test (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: "Linux & Common"
-            os: ubuntu-latest
-            task: "./gradlew :shared:allTests -Pkotlin.native.ignoreDisabledTargets=true"
-          - target: "macOS & iOS"
-            os: macos-latest
-            task: "./gradlew :shared:allTests"
+  common:
+    name: Common
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@v4.2.2
@@ -35,11 +25,103 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.2.0
+
+      - name: Run common/JVM tests
+        run: ./gradlew :shared:jvmTest
+
+  android:
+    name: Android
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4.2.0
 
-      - name: Run Target Tests
-        run: ${{ matrix.task }}
+      - name: Run Android tests
+        run: ./gradlew :shared:testAndroidHostTest :androidApp:testDebugUnitTest
+
+  desktop:
+    name: Desktop
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.2.0
+
+      - name: Run Desktop tests
+        run: ./gradlew :desktopApp:test
+
+  js:
+    name: Web JS
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.2.0
+
+      - name: Run JS tests
+        run: ./gradlew :webApp:jsBrowserTest
+
+  wasm:
+    name: Web WASM
+    runs-on: ubuntu-26.04
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.2.0
+
+      - name: Run WASM tests
+        run: ./gradlew :webApp:wasmJsBrowserTest
+
+  ios:
+    name: iOS
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@v4.2.2
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4.7.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4.2.0
+
+      - name: Run iOS tests
+        run: ./gradlew :shared:iosSimulatorArm64Test
