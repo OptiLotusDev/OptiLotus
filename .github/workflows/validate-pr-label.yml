@@ -2,11 +2,7 @@ name: Validate PR Release Label
 
 on:
   pull_request:
-    types: [opened, labeled, unlabeled]
-
-concurrency:
-  group: validate-label-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+    types: [opened, labeled, unlabeled, synchronize, reopened]
 
 permissions:
   contents: read
