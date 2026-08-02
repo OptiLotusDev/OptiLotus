@@ -106,7 +106,7 @@ fun PaletteDragGhost(item: PaletteItem, rootPosition: Offset, geometry: CanvasGe
         Modifier
             .offset { IntOffset((rootPosition.x + offsetUp.x).roundToInt(), (rootPosition.y + offsetUp.y).roundToInt()) }
             .width(232.dp)
-            .glassSurface(shape = RoundedCornerShape(14.dp), tint = color.copy(alpha = 0.28f), elevation = 8.dp)
+            .glassSurface(shape = RoundedCornerShape(14.dp), tint = color.copy(alpha = 0.28f), elevation = 8.dp, blurred = false)
             .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

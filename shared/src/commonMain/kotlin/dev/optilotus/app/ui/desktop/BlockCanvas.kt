@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
@@ -152,7 +151,7 @@ private fun DropPreview(position: Offset, willChain: Boolean, geometry: CanvasGe
         Modifier
             .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
             .size(geometry.width, geometry.height)
-            .glassSurface(shape = shape, tint = Accent.copy(alpha = 0.12f), borderVisible = false, elevation = 2.dp)
+            .glassSurface(shape = shape, tint = Accent.copy(alpha = 0.12f), borderVisible = false, elevation = 2.dp, blurred = false)
     ) {
         Box(
             Modifier

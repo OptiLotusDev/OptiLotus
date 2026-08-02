@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -14,7 +15,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import dev.optilotus.app.ui.state.BlockCategory
+
+/**
+ * Optional Haze state for real gaussian backdrop blur on glass surfaces.
+ * Provided by the adaptive UI roots (e.g. [dev.optilotus.app.ui.adaptive.DesktopApp]);
+ * surfaces render a flat translucent tint when it is absent.
+ */
+val LocalHazeState = staticCompositionLocalOf<HazeState?> { null }
 
 val CanvasBackgroundStart = Color(0xFF0B0F1A)
 val CanvasBackgroundEnd = Color(0xFF151B2B)
@@ -39,11 +50,19 @@ fun categoryColor(category: BlockCategory): Color = when (category) {
     BlockCategory.VARIABLES -> Color(0xFFA78BFA)
 }
 
+/**
+ * Liquid-glass surface: a real gaussian blur of whatever sits behind it (via
+ * Haze) combined with a translucent tint and a specular top-to-bottom border.
+ * When no [LocalHazeState] is provided (or [blurred] is false) it falls back to
+ * a flat translucent tint, which is also what old Android devices get.
+ */
+@Composable
 fun Modifier.glassSurface(
     shape: Shape = RoundedCornerShape(18.dp),
     tint: Color = GlassSurface,
     borderVisible: Boolean = true,
-    elevation: Dp = 10.dp
+    elevation: Dp = 10.dp,
+    blurred: Boolean = true
 ): Modifier {
     val border = if (borderVisible) {
         Modifier.border(
@@ -56,10 +75,23 @@ fun Modifier.glassSurface(
     } else {
         Modifier
     }
-    return this
+    val clipped = this
         .shadow(elevation = elevation, shape = shape, clip = false)
         .clip(shape)
-        .background(Brush.linearGradient(listOf(tint.copy(alpha = 0.88f), tint.copy(alpha = 0.70f))), shape)
+    val hazeState = LocalHazeState.current
+    val frosted = if (hazeState != null && blurred) {
+        clipped.hazeEffect(state = hazeState) {
+            blurRadius = 16.dp
+            backgroundColor = Color.Transparent
+            tints = emptyList()
+            fallbackTint = HazeTint(Color.Transparent)
+            noiseFactor = 0f
+        }
+    } else {
+        clipped
+    }
+    return frosted
+        .background(Brush.linearGradient(listOf(tint.copy(alpha = 0.80f), tint.copy(alpha = 0.62f))), shape)
         .then(border)
 }
 

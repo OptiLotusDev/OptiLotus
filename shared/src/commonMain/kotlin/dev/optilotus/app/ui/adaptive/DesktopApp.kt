@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import dev.optilotus.app.ui.desktop.BlockCanvas
 import dev.optilotus.app.ui.desktop.ConsolePanel
 import dev.optilotus.app.ui.desktop.InspectorPanel
@@ -32,6 +34,7 @@ import dev.optilotus.app.ui.state.BlockProgramStateHolder
 import dev.optilotus.app.ui.state.CanvasGeometry
 import dev.optilotus.app.ui.state.LocalCanvasGeometry
 import dev.optilotus.app.ui.state.PaletteItem
+import dev.optilotus.app.ui.theme.LocalHazeState
 import dev.optilotus.app.ui.theme.OptiLotusTheme
 import dev.optilotus.app.ui.theme.themeBackgroundGradient
 
@@ -56,6 +59,8 @@ fun DesktopApp() {
         var dragPositionRoot by remember { mutableStateOf(Offset.Zero) }
         var dragActive by remember { mutableStateOf(false) }
 
+        val hazeState = rememberHazeState()
+
         fun finishDrop(item: PaletteItem, rootPosition: Offset) {
             dragActive = false
             dragItem = null
@@ -73,12 +78,17 @@ fun DesktopApp() {
             }
         }
 
-        CompositionLocalProvider(LocalCanvasGeometry provides geometry) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Brush.verticalGradient(themeBackgroundGradient))
-            ) {
+        CompositionLocalProvider(
+            LocalCanvasGeometry provides geometry,
+            LocalHazeState provides hazeState
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Brush.verticalGradient(themeBackgroundGradient))
+                        .hazeSource(hazeState)
+                ) {}
                 Column(Modifier.fillMaxSize()) {
                     TopBar(state, holder)
                     Row(Modifier.weight(1f).fillMaxSize()) {
@@ -102,7 +112,7 @@ fun DesktopApp() {
                             paletteDragPosition = if (dragActive) dragPositionRoot else null,
                             onCanvasPositioned = { canvasRootOffset = it },
                             onCanvasResized = { canvasSizePx = it },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).hazeSource(hazeState)
                         )
                     }
                 }

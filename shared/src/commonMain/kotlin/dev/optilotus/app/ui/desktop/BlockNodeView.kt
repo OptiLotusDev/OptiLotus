@@ -85,7 +85,7 @@ fun BlockNodeView(
         Box(
             Modifier
                 .fillMaxSize()
-                .glassSurface(shape = shape, tint = color.copy(alpha = 0.30f), elevation = 0.dp)
+                .glassSurface(shape = shape, tint = color.copy(alpha = 0.30f), elevation = 0.dp, blurred = false)
         ) {
             Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
                 Row(
