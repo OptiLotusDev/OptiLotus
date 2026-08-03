@@ -11,8 +11,8 @@ import kotlin.math.roundToInt
 
 @Immutable
 class CanvasGeometry(private val density: Density) {
-    val width = 260.dp
-    val height = 112.dp
+    val width = 300.dp
+    val height = 44.dp
     val widthPx: Float get() = with(density) { width.toPx() }
     val heightPx: Float get() = with(density) { height.toPx() }
     val socketRadius = 7.dp
@@ -21,7 +21,7 @@ class CanvasGeometry(private val density: Density) {
     val connectorHitRadiusPx: Float get() = with(density) { connectorHitRadius.toPx() }
     val gridSpacing = 28.dp
     val gridSpacingPx: Float get() = with(density) { gridSpacing.toPx() }
-    val chainGap = 16.dp
+    val chainGap = 8.dp
     val chainGapPx: Float get() = with(density) { chainGap.toPx() }
     val stepPx: Float get() = heightPx + chainGapPx
 

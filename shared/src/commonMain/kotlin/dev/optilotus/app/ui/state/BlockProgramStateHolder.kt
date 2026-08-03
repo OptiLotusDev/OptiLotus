@@ -35,13 +35,16 @@ class BlockProgramStateHolder {
         }
     }
 
-    fun moveBlockTo(id: BlockId, insertIndex: Int? = null) {
+    /** Returns true when the block was actually moved, false when it stayed in place. */
+    fun moveBlockTo(id: BlockId, insertIndex: Int? = null): Boolean {
+        var moved = false
         _state.update { state ->
             val from = state.blocks.indexOfFirst { it.id == id }
             if (from < 0) return@update state.copy(draggingBlockId = null, dragInsertIndex = 0)
             val gap = (insertIndex ?: state.dragInsertIndex).coerceIn(0, state.blocks.size)
             val effective = if (gap > from) gap - 1 else gap
             if (effective == from) return@update state.copy(draggingBlockId = null, dragInsertIndex = 0)
+            moved = true
             val reordered = state.blocks.toMutableList().apply {
                 val block = removeAt(from)
                 add(effective, block)
@@ -52,6 +55,7 @@ class BlockProgramStateHolder {
                 dragInsertIndex = 0
             )
         }
+        return moved
     }
 
     fun setDragInsert(draggingId: BlockId?, insertIndex: Int) {
@@ -63,7 +67,9 @@ class BlockProgramStateHolder {
     }
 
     fun selectBlock(id: BlockId?) {
-        _state.update { it.copy(selectedBlockId = id) }
+        _state.update {
+            it.copy(selectedBlockId = id, inspectorVisible = if (id != null) true else it.inspectorVisible)
+        }
     }
 
     fun updateValue(id: BlockId, value: String) {

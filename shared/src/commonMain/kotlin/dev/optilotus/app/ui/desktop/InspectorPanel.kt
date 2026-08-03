@@ -1,5 +1,13 @@
 package dev.optilotus.app.ui.desktop
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateOffsetAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,92 +52,116 @@ import dev.optilotus.app.ui.theme.TextSecondary
 import dev.optilotus.app.ui.theme.glassSurface
 import kotlin.math.roundToInt
 
+/**
+ * Floating inspector that animates to the right of the selected block. It springs
+ * to a new [anchor] (root coords) as you select different blocks, and slides/fades
+ * in and out when a block is selected or the panel is closed.
+ */
 @Composable
-fun InspectorPanel(state: BlockProgramUiState, holder: BlockProgramStateHolder, modifier: Modifier = Modifier) {
+fun InspectorPanel(
+    state: BlockProgramUiState,
+    holder: BlockProgramStateHolder,
+    anchor: Offset,
+    modifier: Modifier = Modifier
+) {
     val block = state.blocks.firstOrNull { it.id == state.selectedBlockId }
-    var windowOffset by remember { mutableStateOf(Offset.Zero) }
+    var manualOffset by remember { mutableStateOf(Offset.Zero) }
     var width by remember { mutableStateOf(320.dp) }
-    var height by remember { mutableStateOf(340.dp) }
+    var height by remember { mutableStateOf(320.dp) }
     val density = LocalDensity.current
 
-    Box(
-        modifier
-            .padding(16.dp)
-            .offset { IntOffset(windowOffset.x.roundToInt(), windowOffset.y.roundToInt()) }
-            .width(width)
-            .height(height)
-            .glassSurface(shape = RoundedCornerShape(20.dp))
+    val animatedAnchor by animateOffsetAsState(
+        targetValue = anchor,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "inspectorAnchor"
+    )
+    val target = animatedAnchor + manualOffset
+
+    AnimatedVisibility(
+        visible = block != null && state.inspectorVisible,
+        enter = fadeIn(animationSpec = spring(stiffness = Spring.StiffnessMedium)) +
+            slideInHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMedium)) { it / 2 },
+        exit = fadeOut(animationSpec = spring(stiffness = Spring.StiffnessMedium)) +
+            slideOutHorizontally(animationSpec = spring(stiffness = Spring.StiffnessMedium)) { it / 2 }
     ) {
-        Column(Modifier.fillMaxSize().padding(16.dp)) {
-            Row(
+        Box(
+            modifier
+                .offset { IntOffset(target.x.roundToInt(), target.y.roundToInt()) }
+                .width(width)
+                .height(height)
+                .glassSurface(shape = RoundedCornerShape(20.dp))
+        ) {
+            Column(Modifier.fillMaxSize().padding(16.dp)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                manualOffset += dragAmount
+                            }
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Inspector", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                    Spacer(Modifier.weight(1f))
+                    GlyphIconButton("✕", onClick = { holder.toggleInspector() })
+                }
+                if (block != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "print",
+                        color = Accent,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text("id ${block.id.value.take(8)}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Spacer(Modifier.height(14.dp))
+                    Text("Value", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                    OutlinedTextField(
+                        value = block.literalValue,
+                        onValueChange = { holder.updateValue(block.id, it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                        minLines = 2
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("Append newline", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+                        Spacer(Modifier.weight(1f))
+                        Switch(checked = block.addNewline, onCheckedChange = { holder.toggleNewline(block.id) })
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row {
+                        Button(onClick = { holder.runProgram() }) { Text("Run") }
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedButton(onClick = { holder.deleteBlock(block.id) }) { Text("Delete", color = Error) }
+                    }
+                } else {
+                    Spacer(Modifier.height(24.dp))
+                    Text(
+                        "Select a block to edit its value and newline behaviour.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
+            }
+            Box(
                 Modifier
-                    .fillMaxWidth()
+                    .align(Alignment.BottomEnd)
+                    .size(24.dp)
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
-                            windowOffset += dragAmount
+                            width = (width + with(density) { dragAmount.x.toDp() }).coerceIn(280.dp, 620.dp)
+                            height = (height + with(density) { dragAmount.y.toDp() }).coerceIn(260.dp, 720.dp)
                         }
                     },
-                verticalAlignment = Alignment.CenterVertically
+                contentAlignment = Alignment.Center
             ) {
-                Text("Inspector", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                Spacer(Modifier.weight(1f))
-                GlyphIconButton("✕", onClick = { holder.toggleInspector() })
+                Text("⤡", color = TextSecondary, fontSize = 12.sp)
             }
-            if (block != null) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "print",
-                    color = Accent,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleSmall
-                )
-                Text("id ${block.id.value.take(8)}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                Spacer(Modifier.height(14.dp))
-                Text("Value", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-                OutlinedTextField(
-                    value = block.literalValue,
-                    onValueChange = { holder.updateValue(block.id, it) },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    minLines = 2
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Append newline", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                    Spacer(Modifier.weight(1f))
-                    Switch(checked = block.addNewline, onCheckedChange = { holder.toggleNewline(block.id) })
-                }
-                Spacer(Modifier.height(14.dp))
-                Row {
-                    Button(onClick = { holder.runProgram() }) { Text("Run") }
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedButton(onClick = { holder.deleteBlock(block.id) }) { Text("Delete", color = Error) }
-                }
-            } else {
-                Spacer(Modifier.height(24.dp))
-                Text(
-                    "Select a block on the canvas to inspect and edit its value and newline behaviour.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-            }
-        }
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .size(24.dp)
-                .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        width = (width + with(density) { dragAmount.x.toDp() }).coerceIn(280.dp, 620.dp)
-                        height = (height + with(density) { dragAmount.y.toDp() }).coerceIn(280.dp, 720.dp)
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("⤡", color = TextSecondary, fontSize = 12.sp)
         }
     }
 }

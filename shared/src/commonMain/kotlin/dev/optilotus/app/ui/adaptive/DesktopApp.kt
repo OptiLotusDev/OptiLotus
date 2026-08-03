@@ -114,9 +114,16 @@ fun DesktopApp() {
                 if (dragActive && item != null) {
                     PaletteDragGhost(item, dragPositionRoot, geometry)
                 }
-                if (state.inspectorVisible) {
-                    InspectorPanel(state, holder, Modifier.align(Alignment.TopEnd).padding(top = 96.dp))
-                }
+                val inspectorAnchor = (state.selectedBlockId?.let { sel ->
+                    val idx = state.blocks.indexOfFirst { it.id == sel }
+                    if (idx >= 0) {
+                        Offset(
+                            x = canvasRootOffset.x + state.chainOffset.x + geometry.widthPx + with(density) { 18.dp.toPx() },
+                            y = canvasRootOffset.y + state.chainOffset.y + idx * geometry.stepPx
+                        )
+                    } else null
+                }) ?: Offset.Zero
+                InspectorPanel(state, holder, anchor = inspectorAnchor)
                 if (state.consoleVisible) {
                     ConsolePanel(state, holder, Modifier.align(Alignment.BottomEnd))
                 }

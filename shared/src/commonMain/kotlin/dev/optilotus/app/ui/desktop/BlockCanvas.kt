@@ -11,7 +11,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -23,6 +24,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +40,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -50,6 +54,7 @@ import dev.optilotus.app.ui.state.gappedSlotIndex
 import dev.optilotus.app.ui.theme.Accent
 import dev.optilotus.app.ui.theme.Success
 import dev.optilotus.app.ui.theme.TextSecondary
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val chainSpring = spring<Float>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
@@ -96,8 +101,13 @@ fun BlockCanvas(
     var draggedDeltaY by remember { mutableStateOf(0f) }
 
     val yAnims = remember { mutableStateMapOf<BlockId, Animatable<Float, AnimationVector1D>>() }
+    val scope = rememberCoroutineScope()
     val idsKey = state.blocks.joinToString(",") { it.id.value }
     LaunchedEffect(idsKey) { yAnims.keys.retainAll(state.blocks.map { it.id }.toSet()) }
+
+    val currentState by rememberUpdatedState(state)
+    val currentGeometry by rememberUpdatedState(geometry)
+    val panSlop = LocalViewConfiguration.current.touchSlop
 
     Box(
         modifier
@@ -113,15 +123,38 @@ fun BlockCanvas(
                 onCanvasResized(size)
             }
             .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { holder.selectBlock(null) },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        holder.panChain(dragAmount)
-                    },
-                    onDragEnd = {},
-                    onDragCancel = {}
-                )
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Panning only starts off the chain; drags on the chain are
+                    // handled by the blocks' reorder gesture.
+                    val s = currentState
+                    val g = currentGeometry
+                    val chainTop = s.chainOffset.y
+                    val chainBottom = chainTop + (s.blocks.size - 1) * g.stepPx + g.heightPx
+                    val onChain = s.blocks.isNotEmpty() &&
+                        down.position.x in s.chainOffset.x..(s.chainOffset.x + g.widthPx) &&
+                        down.position.y in chainTop..chainBottom
+                    if (onChain) return@awaitEachGesture
+
+                    var panning = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.isConsumed) break
+                        if (!change.pressed) break
+                        if (!panning) {
+                            val distance = (change.position - down.position).getDistance()
+                            if (distance <= panSlop) { continue }
+                            panning = true
+                            holder.selectBlock(null)
+                        }
+                        val delta = change.position - change.previousPosition
+                        if (delta != Offset.Zero) {
+                            change.consume()
+                            holder.panChain(delta)
+                        }
+                    }
+                }
             }
     ) {
         ChainConnectors(state, layoutGap, yAnims, geometry)
@@ -150,6 +183,7 @@ fun BlockCanvas(
                         translationY = if (block.id == draggingId) draggedDeltaY else 0f
                     },
                 onSelect = { holder.selectBlock(block.id) },
+                onOpenInspector = { holder.selectBlock(block.id) },
                 onReorderStart = { id ->
                     holder.setDragInsert(id, j)
                     draggedDeltaY = 0f
@@ -158,8 +192,26 @@ fun BlockCanvas(
                     holder.setDragInsert(id, gap)
                     draggedDeltaY = deltaY
                 },
-                onReorderEnd = { holder.moveBlockTo(it) },
-                onReorderCancel = { holder.moveBlockTo(it, j) },
+                onReorderEnd = { id ->
+                    scope.launch {
+                        val anim = yAnims[id]
+                        anim?.snapTo(anim.value + draggedDeltaY)
+                        val moved = holder.moveBlockTo(id)
+                        if (!moved) {
+                            anim?.animateTo(j * geometry.stepPx, chainSpring)
+                        }
+                        draggedDeltaY = 0f
+                    }
+                },
+                onReorderCancel = { id ->
+                    scope.launch {
+                        val anim = yAnims[id]
+                        anim?.snapTo(anim.value + draggedDeltaY)
+                        holder.moveBlockTo(id, j)
+                        anim?.animateTo(j * geometry.stepPx, chainSpring)
+                        draggedDeltaY = 0f
+                    }
+                },
                 onValueChange = { value -> holder.updateValue(block.id, value) },
                 onToggleNewline = { holder.toggleNewline(block.id) },
                 onDelete = { holder.deleteBlock(block.id) }

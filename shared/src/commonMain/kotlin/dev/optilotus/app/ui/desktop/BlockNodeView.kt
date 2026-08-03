@@ -4,15 +4,14 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -20,25 +19,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.optilotus.app.domain.BlockId
@@ -62,6 +58,7 @@ fun BlockNodeView(
     chainLength: Int,
     modifier: Modifier = Modifier,
     onSelect: () -> Unit,
+    onOpenInspector: () -> Unit,
     onReorderStart: (BlockId) -> Unit,
     onReorderMove: (BlockId, Int, Float) -> Unit,
     onReorderEnd: (BlockId) -> Unit,
@@ -72,80 +69,84 @@ fun BlockNodeView(
 ) {
     val geometry = LocalCanvasGeometry.current
     val color = categoryColor(block.category)
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(14.dp)
+    val viewConfig = LocalViewConfiguration.current
+
+    // Single source of truth for tap-vs-drag on the whole block body.
+    val slop = remember { viewConfig.touchSlop }
 
     Box(
         modifier
             .size(geometry.width, geometry.height)
-            .shadow(elevation = if (selected) 18.dp else 10.dp, shape = shape, clip = false)
+            .shadow(elevation = if (selected) 16.dp else 8.dp, shape = shape, clip = false)
             .graphicsLayer {
-                scaleX = if (selected) 1.015f else 1f
-                scaleY = if (selected) 1.015f else 1f
+                scaleX = if (selected) 1.02f else 1f
+                scaleY = if (selected) 1.02f else 1f
             }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect() }
+            .pointerInput(block.id, index, chainLength) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dragging = false
+                    var dy = 0f
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.isConsumed) {
+                            if (dragging) onReorderCancel(block.id)
+                            break
+                        }
+                        if (!change.pressed) {
+                            if (dragging) onReorderEnd(block.id) else onSelect()
+                            break
+                        }
+                        val distance = (change.position - down.position).getDistance()
+                        if (!dragging) {
+                            if (distance <= slop) { continue }
+                            dragging = true
+                            onReorderStart(block.id)
+                        }
+                        val delta = change.position - change.previousPosition
+                        if (delta != Offset.Zero) {
+                            change.consume()
+                            dy += delta.y
+                            onReorderMove(
+                                block.id,
+                                reorderGapIndex(index, dy, geometry.stepPx, chainLength),
+                                dy
+                            )
+                        }
+                    }
+                }
+            }
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .glassSurface(shape = shape, tint = color.copy(alpha = 0.30f), elevation = 0.dp, blurred = false)
+                .glassSurface(shape = shape, tint = color.copy(alpha = 0.32f), elevation = 0.dp, blurred = false)
         ) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .pointerInput(block.id) {
-                            var accumulatedY = 0f
-                            detectDragGestures(
-                                onDragStart = {
-                                    onSelect()
-                                    onReorderStart(block.id)
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    accumulatedY += dragAmount.y
-                                    val gap = reorderGapIndex(index, accumulatedY, geometry.stepPx, chainLength)
-                                    onReorderMove(block.id, gap, accumulatedY)
-                                },
-                                onDragEnd = { onReorderEnd(block.id) },
-                                onDragCancel = { onReorderCancel(block.id) }
-                            )
-                        },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("⠿", color = TextSecondary, fontSize = 12.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        "print",
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary,
-                        fontSize = 14.sp
-                    )
-                    Spacer(Modifier.weight(1f))
-                    NewlineChip(addNewline = block.addNewline, onClick = onToggleNewline)
-                    if (selected) {
-                        Spacer(Modifier.width(6.dp))
-                        DeleteGlyph(onDelete)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "value",
-                        color = TextSecondary,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        modifier = Modifier.width(38.dp)
-                    )
-                    ValueSlot(value = block.literalValue, onValueChange = onValueChange)
-                }
-                Spacer(Modifier.height(6.dp))
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                                Spacer(Modifier.width(8.dp))
                 Text(
-                    if (block.addNewline) "output: \"…\\n\"" else "output: \"…\"",
-                    color = TextSecondary,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace
+                    "print",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextPrimary,
+                    fontSize = 13.sp,
+                    maxLines = 1
                 )
+                Spacer(Modifier.width(8.dp))
+                ValuePill(value = block.literalValue, onClick = onOpenInspector, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(6.dp))
+                NewlineChip(addNewline = block.addNewline, onClick = onToggleNewline)
+                if (selected) {
+                    Spacer(Modifier.width(6.dp))
+                    DeleteGlyph(onDelete)
+                }
             }
         }
 
@@ -160,8 +161,8 @@ fun BlockNodeView(
         Canvas(
             Modifier
                 .align(Alignment.TopCenter)
-                .size(18.dp)
-                .offset(y = (-9).dp)
+                .size(16.dp)
+                .offset(y = (-7).dp)
         ) {
             drawArc(
                 color = SocketColor,
@@ -176,8 +177,8 @@ fun BlockNodeView(
         Canvas(
             Modifier
                 .align(Alignment.BottomCenter)
-                .size(20.dp)
-                .offset(y = 10.dp)
+                .size(18.dp)
+                .offset(y = 9.dp)
         ) {
             val r = geometry.socketRadiusPx
             drawCircle(SocketColor, radius = r, center = center)
@@ -191,31 +192,53 @@ fun BlockNodeView(
 }
 
 @Composable
+private fun ValuePill(value: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    Box(
+        modifier
+            .height(28.dp)
+            .graphicsLayer {
+                scaleX = if (isPressed) 0.97f else 1f
+                scaleY = if (isPressed) 0.97f else 1f
+            }
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.92f))
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            value.ifEmpty { "type a value…" },
+            color = if (value.isEmpty()) TextSecondary else Color(0xFF1A1F2E),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
 private fun NewlineChip(addNewline: Boolean, onClick: () -> Unit) {
-    var pressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     Row(
         Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (addNewline) Accent.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.05f))
             .graphicsLayer {
-                scaleX = if (pressed) 0.94f else 1f
-                scaleY = if (pressed) 0.94f else 1f
+                scaleX = if (isPressed) 0.94f else 1f
+                scaleY = if (isPressed) 0.94f else 1f
             }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() }
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    pressed = true
-                    tryAwaitRelease()
-                    pressed = false
-                })
-            }
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .clip(RoundedCornerShape(50))
+            .background(if (addNewline) Accent.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f))
+            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
+            .padding(horizontal = 7.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             "\\n",
             color = if (addNewline) AccentBright else TextSecondary,
-            fontSize = 10.sp,
+            fontSize = 9.sp,
             fontFamily = FontFamily.Monospace
         )
     }
@@ -227,35 +250,10 @@ private fun DeleteGlyph(onClick: () -> Unit) {
         Modifier
             .size(18.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.06f))
+            .background(Color.White.copy(alpha = 0.08f))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Text("✕", color = Error, fontSize = 9.sp)
     }
-}
-
-@Composable
-private fun ValueSlot(value: String, onValueChange: (String) -> Unit) {
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        singleLine = true,
-        textStyle = TextStyle(color = TextPrimary, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
-        cursorBrush = SolidColor(Accent),
-        decorationBox = { innerTextField ->
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 10.dp, vertical = 7.dp)
-            ) {
-                if (value.isEmpty()) {
-                    Text("type a value…", color = TextSecondary, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                }
-                innerTextField()
-            }
-        }
-    )
 }
