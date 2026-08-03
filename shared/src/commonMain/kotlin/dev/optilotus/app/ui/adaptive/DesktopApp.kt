@@ -25,8 +25,6 @@ import dev.chrisbanes.haze.rememberHazeState
 import dev.optilotus.app.ui.desktop.BlockCanvas
 import dev.optilotus.app.ui.desktop.ConsolePanel
 import dev.optilotus.app.ui.desktop.InspectorPanel
-import dev.optilotus.app.ui.desktop.clampToCanvas
-import dev.optilotus.app.ui.desktop.hitOutputSocket
 import dev.optilotus.app.ui.shared.BlockPalette
 import dev.optilotus.app.ui.shared.PaletteDragGhost
 import dev.optilotus.app.ui.shared.TopBar
@@ -34,6 +32,7 @@ import dev.optilotus.app.ui.state.BlockProgramStateHolder
 import dev.optilotus.app.ui.state.CanvasGeometry
 import dev.optilotus.app.ui.state.LocalCanvasGeometry
 import dev.optilotus.app.ui.state.PaletteItem
+import dev.optilotus.app.ui.state.gapIndexForPointer
 import dev.optilotus.app.ui.theme.LocalHazeState
 import dev.optilotus.app.ui.theme.OptiLotusTheme
 import dev.optilotus.app.ui.theme.themeBackgroundGradient
@@ -69,12 +68,8 @@ fun DesktopApp() {
                 position.x in 0f..canvasSizePx.width.toFloat() &&
                     position.y in 0f..canvasSizePx.height.toFloat()
             if (onCanvas) {
-                val target = hitOutputSocket(position, state.blocks, geometry)
-                holder.addPrintBlock(
-                    position = clampToCanvas(position, geometry, canvasSizePx),
-                    addNewline = item.addNewline,
-                    afterBlockId = target?.id
-                )
+                val insertIndex = gapIndexForPointer(position.y, state.chainOffset.y, geometry.stepPx, state.blocks.size)
+                holder.addPrintBlock(item.addNewline, insertIndex)
             }
         }
 
@@ -103,7 +98,6 @@ fun DesktopApp() {
                             onDragCancelled = {
                                 dragActive = false
                                 dragItem = null
-                                holder.setDragHover(null, null)
                             }
                         )
                         BlockCanvas(

@@ -19,62 +19,47 @@ class BlockProgramStateHolder {
     private val _state = MutableStateFlow(BlockProgramUiState())
     val state: StateFlow<BlockProgramUiState> = _state.asStateFlow()
 
-    private var canvasWidthPx = 1600f
-    private var canvasHeightPx = 1000f
-    private var nodeWidthPx = 260f
-    private var nodeHeightPx = 112f
-    private val nodeGapPx = 24f
-
-    fun updateCanvasMetrics(widthPx: Float, heightPx: Float, nodeWidthPx: Float, nodeHeightPx: Float) {
-        this.canvasWidthPx = widthPx
-        this.canvasHeightPx = heightPx
-        this.nodeWidthPx = nodeWidthPx
-        this.nodeHeightPx = nodeHeightPx
-    }
-
-    private fun clamp(position: Offset): Offset = Offset(
-        position.x.coerceIn(0f, (canvasWidthPx - nodeWidthPx).coerceAtLeast(0f)),
-        position.y.coerceIn(0f, (canvasHeightPx - nodeHeightPx).coerceAtLeast(0f))
-    )
-
-    fun addPrintBlock(position: Offset, addNewline: Boolean, afterBlockId: BlockId? = null) {
+    fun addPrintBlock(addNewline: Boolean, insertIndex: Int? = null) {
         _state.update { current ->
-            val parent = afterBlockId?.let { id -> current.blocks.firstOrNull { it.id == id } }
-            val targetPosition = if (parent != null) {
-                Offset(parent.position.x, parent.position.y + nodeHeightPx + nodeGapPx)
-            } else {
-                clamp(position)
-            }
+            val index = insertIndex?.coerceIn(0, current.blocks.size) ?: current.blocks.size
             val block = PlacedBlock(
                 id = BlockId.random(),
-                position = targetPosition,
                 addNewline = addNewline
             )
-            val connections = if (parent != null && current.connections.none { it.fromBlockId == parent.id }) {
-                current.connections + Connection(fromBlockId = parent.id, toBlockId = block.id)
-            } else {
-                current.connections
-            }
             current.copy(
-                blocks = current.blocks + block,
-                connections = connections,
+                blocks = current.blocks.toMutableList().apply { add(index, block) },
                 selectedBlockId = block.id,
-                dragHoverPosition = null,
-                dragHoverTargetBlockId = null
+                draggingBlockId = null,
+                dragInsertIndex = 0
             )
         }
     }
 
-    fun setDragHover(position: Offset?, targetBlockId: BlockId?) {
-        _state.update { it.copy(dragHoverPosition = position, dragHoverTargetBlockId = targetBlockId) }
+    fun moveBlockTo(id: BlockId, insertIndex: Int? = null) {
+        _state.update { state ->
+            val from = state.blocks.indexOfFirst { it.id == id }
+            if (from < 0) return@update state.copy(draggingBlockId = null, dragInsertIndex = 0)
+            val gap = (insertIndex ?: state.dragInsertIndex).coerceIn(0, state.blocks.size)
+            val effective = if (gap > from) gap - 1 else gap
+            if (effective == from) return@update state.copy(draggingBlockId = null, dragInsertIndex = 0)
+            val reordered = state.blocks.toMutableList().apply {
+                val block = removeAt(from)
+                add(effective, block)
+            }
+            state.copy(
+                blocks = reordered,
+                draggingBlockId = null,
+                dragInsertIndex = 0
+            )
+        }
     }
 
-    fun moveBlockBy(id: BlockId, delta: Offset) {
-        _state.update { state ->
-            state.copy(blocks = state.blocks.map { block ->
-                if (block.id == id) block.copy(position = clamp(block.position + delta)) else block
-            })
-        }
+    fun setDragInsert(draggingId: BlockId?, insertIndex: Int) {
+        _state.update { it.copy(draggingBlockId = draggingId, dragInsertIndex = insertIndex) }
+    }
+
+    fun panChain(delta: Offset) {
+        _state.update { it.copy(chainOffset = it.chainOffset + delta) }
     }
 
     fun selectBlock(id: BlockId?) {
@@ -101,8 +86,9 @@ class BlockProgramStateHolder {
         _state.update { state ->
             state.copy(
                 blocks = state.blocks.filterNot { it.id == id },
-                connections = state.connections.filterNot { it.fromBlockId == id || it.toBlockId == id },
-                selectedBlockId = if (state.selectedBlockId == id) null else state.selectedBlockId
+                selectedBlockId = if (state.selectedBlockId == id) null else state.selectedBlockId,
+                draggingBlockId = if (state.draggingBlockId == id) null else state.draggingBlockId,
+                dragInsertIndex = 0
             )
         }
     }
@@ -110,7 +96,6 @@ class BlockProgramStateHolder {
     fun runProgram() {
         val current = _state.value
         if (current.blocks.isEmpty()) return
-        val entryPoint = current.entryPointBlockId ?: return
         val nodes: Map<BlockId, BlockAstNode> = current.blocks.associate { block ->
             block.id to PrintStatementBlock(
                 id = block.id,
@@ -118,10 +103,11 @@ class BlockProgramStateHolder {
                 addNewline = block.addNewline
             )
         }
+        val connections = current.blocks.zipWithNext { a, b -> Connection(fromBlockId = a.id, toBlockId = b.id) }
         val graph = BlockGraph(
-            entryPointBlockId = entryPoint,
+            entryPointBlockId = current.blocks.first().id,
             nodes = nodes,
-            connections = current.connections
+            connections = connections
         )
         val context = BlockExecutionContext()
         BlockProgramMain(graph, context).main()
@@ -136,10 +122,12 @@ class BlockProgramStateHolder {
         _state.update {
             it.copy(
                 blocks = emptyList(),
-                connections = emptyList(),
+                chainOffset = Offset.Zero,
                 selectedBlockId = null,
                 output = emptyList(),
-                errors = emptyList()
+                errors = emptyList(),
+                draggingBlockId = null,
+                dragInsertIndex = 0
             )
         }
     }

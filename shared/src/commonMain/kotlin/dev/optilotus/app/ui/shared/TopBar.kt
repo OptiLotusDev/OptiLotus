@@ -54,7 +54,7 @@ fun TopBar(state: BlockProgramUiState, holder: BlockProgramStateHolder) {
         Text("Block Program Studio", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Spacer(Modifier.weight(1f))
         Text(
-            "${state.blocks.size} blocks · ${state.connections.size} links · ${state.output.size} output lines",
+            "${state.blocks.size} blocks · ${state.linkCount} links · ${state.output.size} output lines",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary
         )

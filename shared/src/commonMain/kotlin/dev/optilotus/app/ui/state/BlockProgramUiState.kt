@@ -2,7 +2,6 @@ package dev.optilotus.app.ui.state
 
 import androidx.compose.ui.geometry.Offset
 import dev.optilotus.app.domain.BlockId
-import dev.optilotus.app.domain.model.Connection
 
 enum class BlockCategory(val label: String) {
     INPUT_OUTPUT("Input / Output"),
@@ -19,7 +18,6 @@ enum class PlacedBlockKind {
 
 data class PlacedBlock(
     val id: BlockId,
-    val position: Offset,
     val kind: PlacedBlockKind = PlacedBlockKind.PRINT,
     val category: BlockCategory = BlockCategory.INPUT_OUTPUT,
     val addNewline: Boolean = true,
@@ -35,26 +33,30 @@ data class PaletteItem(
 )
 
 val BlockPaletteItems = listOf(
-    PaletteItem("print", "print", "Print value without newline", BlockCategory.INPUT_OUTPUT, addNewline = false),
-    PaletteItem("println", "println", "Print value with newline", BlockCategory.INPUT_OUTPUT, addNewline = true)
+    PaletteItem(
+        id = "print",
+        label = "print",
+        description = "Print a value; toggle \\n to end with a newline",
+        category = BlockCategory.INPUT_OUTPUT,
+        addNewline = true
+    )
 )
 
 data class BlockProgramUiState(
     val blocks: List<PlacedBlock> = emptyList(),
-    val connections: List<Connection> = emptyList(),
+    val chainOffset: Offset = Offset.Zero,
     val selectedBlockId: BlockId? = null,
     val output: List<String> = emptyList(),
     val errors: List<String> = emptyList(),
     val runCount: Int = 0,
-    val dragHoverPosition: Offset? = null,
-    val dragHoverTargetBlockId: BlockId? = null,
+    val draggingBlockId: BlockId? = null,
+    val dragInsertIndex: Int = 0,
     val consoleVisible: Boolean = true,
     val inspectorVisible: Boolean = true
 ) {
     val entryPointBlockId: BlockId?
-        get() {
-            if (blocks.isEmpty()) return null
-            val roots = blocks.filter { block -> connections.none { it.toBlockId == block.id } }
-            return (roots.firstOrNull() ?: blocks.first()).id
-        }
+        get() = blocks.firstOrNull()?.id
+
+    val linkCount: Int
+        get() = (blocks.size - 1).coerceAtLeast(0)
 }

@@ -79,7 +79,7 @@ fun InspectorPanel(state: BlockProgramUiState, holder: BlockProgramStateHolder, 
             if (block != null) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    if (block.addNewline) "println" else "print",
+                    "print",
                     color = Accent,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.SemiBold,

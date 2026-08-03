@@ -39,29 +39,33 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.optilotus.app.domain.BlockId
 import dev.optilotus.app.ui.state.LocalCanvasGeometry
 import dev.optilotus.app.ui.state.PlacedBlock
+import dev.optilotus.app.ui.state.reorderGapIndex
 import dev.optilotus.app.ui.theme.Accent
 import dev.optilotus.app.ui.theme.AccentBright
 import dev.optilotus.app.ui.theme.Error
 import dev.optilotus.app.ui.theme.SocketColor
-import dev.optilotus.app.ui.theme.Success
 import dev.optilotus.app.ui.theme.TextPrimary
 import dev.optilotus.app.ui.theme.TextSecondary
 import dev.optilotus.app.ui.theme.categoryColor
 import dev.optilotus.app.ui.theme.glassSurface
-import kotlin.math.roundToInt
 
 @Composable
 fun BlockNodeView(
     block: PlacedBlock,
     selected: Boolean,
-    hoverConnect: Boolean,
+    index: Int,
+    chainLength: Int,
+    modifier: Modifier = Modifier,
     onSelect: () -> Unit,
-    onMovedBy: (Offset) -> Unit,
+    onReorderStart: (BlockId) -> Unit,
+    onReorderMove: (BlockId, Int, Float) -> Unit,
+    onReorderEnd: (BlockId) -> Unit,
+    onReorderCancel: (BlockId) -> Unit,
     onValueChange: (String) -> Unit,
     onToggleNewline: () -> Unit,
     onDelete: () -> Unit
@@ -69,18 +73,16 @@ fun BlockNodeView(
     val geometry = LocalCanvasGeometry.current
     val color = categoryColor(block.category)
     val shape = RoundedCornerShape(16.dp)
-    val interactionSource = remember { MutableInteractionSource() }
 
     Box(
-        Modifier
-            .offset { IntOffset(block.position.x.roundToInt(), block.position.y.roundToInt()) }
+        modifier
             .size(geometry.width, geometry.height)
             .shadow(elevation = if (selected) 18.dp else 10.dp, shape = shape, clip = false)
             .graphicsLayer {
                 scaleX = if (selected) 1.015f else 1f
                 scaleY = if (selected) 1.015f else 1f
             }
-            .clickable(interactionSource = interactionSource, indication = null) { onSelect() }
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect() }
     ) {
         Box(
             Modifier
@@ -92,12 +94,20 @@ fun BlockNodeView(
                     Modifier
                         .fillMaxWidth()
                         .pointerInput(block.id) {
+                            var accumulatedY = 0f
                             detectDragGestures(
-                                onDragStart = { onSelect() },
+                                onDragStart = {
+                                    onSelect()
+                                    onReorderStart(block.id)
+                                },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    onMovedBy(dragAmount)
-                                }
+                                    accumulatedY += dragAmount.y
+                                    val gap = reorderGapIndex(index, accumulatedY, geometry.stepPx, chainLength)
+                                    onReorderMove(block.id, gap, accumulatedY)
+                                },
+                                onDragEnd = { onReorderEnd(block.id) },
+                                onDragCancel = { onReorderCancel(block.id) }
                             )
                         },
                     verticalAlignment = Alignment.CenterVertically
@@ -105,7 +115,7 @@ fun BlockNodeView(
                     Text("⠿", color = TextSecondary, fontSize = 12.sp)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        if (block.addNewline) "println" else "print",
+                        "print",
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
@@ -170,10 +180,7 @@ fun BlockNodeView(
                 .offset(y = 10.dp)
         ) {
             val r = geometry.socketRadiusPx
-            if (hoverConnect) {
-                drawCircle(Success.copy(alpha = 0.30f), radius = r + 9.dp.toPx(), center = center)
-            }
-            drawCircle(if (hoverConnect) Success else SocketColor, radius = r, center = center)
+            drawCircle(SocketColor, radius = r, center = center)
             drawCircle(
                 Color.White.copy(alpha = 0.45f),
                 radius = r / 2.8f,

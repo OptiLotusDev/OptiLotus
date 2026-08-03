@@ -85,7 +85,7 @@ fun BlockPalette(
                 .padding(12.dp)
         ) {
             Text(
-                "Drop a block on a block's bottom socket (●) to chain them, then press ▶ Run.",
+                "Drop a print block onto the chain. Drop it between blocks to insert mid-chain, or drag placed blocks up and down to reorder. Press ▶ Run to execute.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )

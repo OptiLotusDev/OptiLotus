@@ -1,17 +1,26 @@
 package dev.optilotus.app.ui.desktop
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -23,27 +32,33 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import dev.optilotus.app.domain.BlockId
 import dev.optilotus.app.ui.state.BlockProgramStateHolder
 import dev.optilotus.app.ui.state.BlockProgramUiState
 import dev.optilotus.app.ui.state.CanvasGeometry
 import dev.optilotus.app.ui.state.LocalCanvasGeometry
-import dev.optilotus.app.ui.state.PlacedBlock
+import dev.optilotus.app.ui.state.gapIndexForPointer
+import dev.optilotus.app.ui.state.gappedSlotIndex
 import dev.optilotus.app.ui.theme.Accent
 import dev.optilotus.app.ui.theme.Success
 import dev.optilotus.app.ui.theme.TextSecondary
-import dev.optilotus.app.ui.theme.glassSurface
 import kotlin.math.roundToInt
 
+private val chainSpring = spring<Float>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+
 /**
- * Infinite-canvas block editor. Palette drags are reported in root coordinates
- * via [paletteDragPosition]; this composable resolves them against its own
- * position so the same interaction works on desktop, web and tablets.
+ * Lego-style block editor. Blocks stack into a single vertical chain anchored
+ * at [BlockProgramUiState.chainOffset]; the whole chain pans when the empty
+ * canvas is dragged. Blocks reorder inside the chain (start/middle/end) with a
+ * live spring gap that opens beneath the drag and closes on drop.
  */
 @Composable
 fun BlockCanvas(
@@ -62,11 +77,27 @@ fun BlockCanvas(
     val dragOnCanvas = dragPositionLocal?.takeIf { position ->
         position.x in 0f..canvasSize.width.toFloat() && position.y in 0f..canvasSize.height.toFloat()
     }
-    val hoverTarget = dragOnCanvas?.let { hitOutputSocket(it, state.blocks, geometry) }
-
-    LaunchedEffect(dragOnCanvas, hoverTarget) {
-        holder.setDragHover(dragOnCanvas, hoverTarget?.id)
+    val paletteGap = dragOnCanvas?.let {
+        gapIndexForPointer(it.y, state.chainOffset.y, geometry.stepPx, state.blocks.size)
     }
+
+    val draggingId = state.draggingBlockId
+    val dragFrom = draggingId?.let { id -> state.blocks.indexOfFirst { b -> b.id == id } }
+        .takeIf { it != null && it >= 0 }
+
+    // A gap is open only while a reorder drag or a palette drop is live.
+    val layoutGap: Int? = when {
+        dragFrom != null && draggingId != null -> state.dragInsertIndex
+        paletteGap != null -> paletteGap
+        else -> null
+    }
+    val gapFrom: Int? = if (draggingId != null && dragFrom != null) dragFrom else null
+
+    var draggedDeltaY by remember { mutableStateOf(0f) }
+
+    val yAnims = remember { mutableStateMapOf<BlockId, Animatable<Float, AnimationVector1D>>() }
+    val idsKey = state.blocks.joinToString(",") { it.id.value }
+    LaunchedEffect(idsKey) { yAnims.keys.retainAll(state.blocks.map { it.id }.toSet()) }
 
     Box(
         modifier
@@ -80,37 +111,66 @@ fun BlockCanvas(
             .onSizeChanged { size ->
                 canvasSize = size
                 onCanvasResized(size)
-                holder.updateCanvasMetrics(size.width.toFloat(), size.height.toFloat(), geometry.widthPx, geometry.heightPx)
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { holder.selectBlock(null) },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        holder.panChain(dragAmount)
+                    },
+                    onDragEnd = {},
+                    onDragCancel = {}
+                )
             }
     ) {
-        state.connections.forEach { connection ->
-            val from = state.blocks.firstOrNull { it.id == connection.fromBlockId } ?: return@forEach
-            val to = state.blocks.firstOrNull { it.id == connection.toBlockId } ?: return@forEach
-            ConnectionLine(from, to, geometry)
-        }
+        ChainConnectors(state, layoutGap, yAnims, geometry)
 
-        state.entryPointBlockId?.let { rootId ->
-            state.blocks.firstOrNull { it.id == rootId }?.let { root ->
-                StartMarker(root, geometry)
+        state.blocks.forEachIndexed { j, block ->
+            val targetSlot = if (block.id == draggingId) j else {
+                if (layoutGap != null) gappedSlotIndex(j, gapFrom, layoutGap, state.blocks.size) else j
             }
-        }
+            val targetRelY = targetSlot * geometry.stepPx
+            val anim = yAnims.getOrPut(block.id) { Animatable(targetRelY) }
+            LaunchedEffect(anim, targetRelY) { anim.animateTo(targetRelY, chainSpring) }
 
-        state.blocks.forEach { block ->
             BlockNodeView(
                 block = block,
                 selected = state.selectedBlockId == block.id,
-                hoverConnect = state.dragHoverTargetBlockId == block.id,
+                index = j,
+                chainLength = state.blocks.size,
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            state.chainOffset.x.roundToInt(),
+                            (state.chainOffset.y + anim.value).roundToInt()
+                        )
+                    }
+                    .graphicsLayer {
+                        translationY = if (block.id == draggingId) draggedDeltaY else 0f
+                    },
                 onSelect = { holder.selectBlock(block.id) },
-                onMovedBy = { delta -> holder.moveBlockBy(block.id, delta) },
+                onReorderStart = { id ->
+                    holder.setDragInsert(id, j)
+                    draggedDeltaY = 0f
+                },
+                onReorderMove = { id, gap, deltaY ->
+                    holder.setDragInsert(id, gap)
+                    draggedDeltaY = deltaY
+                },
+                onReorderEnd = { holder.moveBlockTo(it) },
+                onReorderCancel = { holder.moveBlockTo(it, j) },
                 onValueChange = { value -> holder.updateValue(block.id, value) },
                 onToggleNewline = { holder.toggleNewline(block.id) },
                 onDelete = { holder.deleteBlock(block.id) }
             )
         }
 
-        dragOnCanvas?.let { position ->
-            DropPreview(position, willChain = hoverTarget != null, geometry = geometry)
+        if (state.blocks.isNotEmpty()) {
+            StartMarker(state, geometry)
         }
+
+        layoutGap?.let { gap -> GapIndicator(state, gap, geometry) }
 
         if (state.blocks.isEmpty()) {
             Box(Modifier.align(Alignment.Center)) {
@@ -120,15 +180,33 @@ fun BlockCanvas(
     }
 }
 
-internal fun hitOutputSocket(position: Offset, blocks: List<PlacedBlock>, geometry: CanvasGeometry): PlacedBlock? =
-    blocks.firstOrNull { block ->
-        (position - geometry.outputSocketCenter(block)).getDistance() <= geometry.connectorHitRadiusPx
+/** Straight, no-curve connectors between consecutive blocks, hidden while a gap is open. */
+@Composable
+private fun ChainConnectors(
+    state: BlockProgramUiState,
+    layoutGap: Int?,
+    yAnims: Map<BlockId, Animatable<Float, AnimationVector1D>>,
+    geometry: CanvasGeometry
+) {
+    Canvas(Modifier.fillMaxSize()) {
+        if (layoutGap != null) return@Canvas
+        val x = state.chainOffset.x + geometry.widthPx / 2f
+        for (k in 0 until state.blocks.size - 1) {
+            val a = state.blocks[k]
+            val b = state.blocks[k + 1]
+            val ya = state.chainOffset.y + (yAnims[a.id]?.value
+                ?: (k * geometry.stepPx)) + geometry.heightPx
+            val yb = state.chainOffset.y + (yAnims[b.id]?.value ?: ((k + 1) * geometry.stepPx))
+            drawLine(
+                color = Accent.copy(alpha = 0.18f),
+                start = Offset(x, ya),
+                end = Offset(x, yb),
+                strokeWidth = geometry.px(3.dp),
+                cap = StrokeCap.Round
+            )
+        }
     }
-
-internal fun clampToCanvas(position: Offset, geometry: CanvasGeometry, canvasSize: IntSize): Offset = Offset(
-    position.x.coerceIn(0f, (canvasSize.width - geometry.widthPx).coerceAtLeast(0f)),
-    position.y.coerceIn(0f, (canvasSize.height - geometry.heightPx).coerceAtLeast(0f))
-)
+}
 
 private fun Modifier.canvasGrid(geometry: CanvasGeometry): Modifier = drawBehind {
     val spacing = geometry.gridSpacingPx
@@ -144,32 +222,45 @@ private fun Modifier.canvasGrid(geometry: CanvasGeometry): Modifier = drawBehind
     }
 }
 
+/** Pulsing insertion line shown where a drag or palette drop would land. */
 @Composable
-private fun DropPreview(position: Offset, willChain: Boolean, geometry: CanvasGeometry) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        Modifier
-            .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
-            .size(geometry.width, geometry.height)
-            .glassSurface(shape = shape, tint = Accent.copy(alpha = 0.12f), borderVisible = false, elevation = 2.dp, blurred = false)
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(if (willChain) Success.copy(alpha = 0.08f) else Accent.copy(alpha = 0.05f), shape)
+private fun GapIndicator(state: BlockProgramUiState, gap: Int, geometry: CanvasGeometry) {
+    val transition = rememberInfiniteTransition(label = "gap")
+    val pulse by transition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(tween(600), repeatMode = RepeatMode.Reverse),
+        label = "gapPulse"
+    )
+    Canvas(Modifier.fillMaxSize()) {
+        val y = state.chainOffset.y + gap * geometry.stepPx
+        val startX = state.chainOffset.x + geometry.px(28.dp)
+        val endX = state.chainOffset.x + geometry.widthPx - geometry.px(28.dp)
+        val x = (startX + endX) / 2f
+        drawLine(
+            color = Accent.copy(alpha = pulse),
+            start = Offset(startX, y),
+            end = Offset(endX, y),
+            strokeWidth = geometry.px(2.dp),
+            cap = StrokeCap.Round
+        )
+        drawCircle(
+            color = Accent.copy(alpha = (pulse + 0.2f).coerceAtMost(1f)),
+            radius = geometry.px(5.dp),
+            center = Offset(x, y)
         )
     }
 }
 
 @Composable
-private fun StartMarker(root: PlacedBlock, geometry: CanvasGeometry) {
-    val input = geometry.inputSocketCenter(root)
-    val badgeRadius = geometry.px(13.dp)
-    val badgeCenter = Offset(input.x, input.y - geometry.px(38.dp))
+private fun StartMarker(state: BlockProgramUiState, geometry: CanvasGeometry) {
+    val input = geometry.inputSocketCenter(state.chainOffset, 0)
+    val badgeRadius = geometry.px(12.dp)
+    val badgeCenter = Offset(input.x - geometry.px(90.dp), input.y)
     Canvas(Modifier.fillMaxSize()) {
         drawLine(
             color = Success,
-            start = Offset(badgeCenter.x, badgeCenter.y + badgeRadius),
+            start = Offset(badgeCenter.x + badgeRadius + geometry.px(4.dp), badgeCenter.y),
             end = input,
             strokeWidth = geometry.px(2.dp),
             cap = StrokeCap.Round
@@ -189,7 +280,7 @@ private fun StartMarker(root: PlacedBlock, geometry: CanvasGeometry) {
 @Composable
 private fun EmptyCanvasHint() {
     Text(
-        "Empty canvas\n\nDrag a print or println block from the palette on the left.\nDrop it on a block's bottom socket (●) to chain blocks.",
+        "Empty chain\n\nDrag a print block from the palette and drop it onto the canvas. Drop between blocks to insert mid-chain, or drag blocks up and down to reorder.",
         style = MaterialTheme.typography.titleMedium,
         color = TextSecondary
     )
