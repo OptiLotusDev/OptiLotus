@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":shared"))
 
     implementation(compose.desktop.currentOs)
+    implementation(compose.material3)
     implementation(libs.kotlinx.coroutinesSwing)
 
     implementation(libs.compose.uiToolingPreview)
@@ -17,7 +18,7 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "dev.optilotus.app.MainKt"
+        mainClass = "app.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
