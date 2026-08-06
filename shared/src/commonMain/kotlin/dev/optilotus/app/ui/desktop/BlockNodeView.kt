@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -19,19 +20,25 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -58,7 +65,6 @@ fun BlockNodeView(
     chainLength: Int,
     modifier: Modifier = Modifier,
     onSelect: () -> Unit,
-    onOpenInspector: () -> Unit,
     onReorderStart: (BlockId) -> Unit,
     onReorderMove: (BlockId, Int, Float) -> Unit,
     onReorderEnd: (BlockId) -> Unit,
@@ -140,7 +146,7 @@ fun BlockNodeView(
                     maxLines = 1
                 )
                 Spacer(Modifier.width(8.dp))
-                ValuePill(value = block.literalValue, onClick = onOpenInspector, modifier = Modifier.weight(1f))
+                ValueEditor(value = block.literalValue, onValueChange = onValueChange, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(6.dp))
                 NewlineChip(addNewline = block.addNewline, onClick = onToggleNewline)
                 if (selected) {
@@ -192,29 +198,46 @@ fun BlockNodeView(
 }
 
 @Composable
-private fun ValuePill(value: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
+private fun ValueEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var focused by remember { mutableStateOf(false) }
     Box(
         modifier
             .height(28.dp)
-            .graphicsLayer {
-                scaleX = if (isPressed) 0.97f else 1f
-                scaleY = if (isPressed) 0.97f else 1f
-            }
             .clip(RoundedCornerShape(50))
             .background(Color.White.copy(alpha = 0.92f))
-            .clickable(interactionSource = interactionSource, indication = null) { onClick() }
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        Text(
-            value.ifEmpty { "type a value…" },
-            color = if (value.isEmpty()) TextSecondary else Color(0xFF1A1F2E),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { focused = it.isFocused },
+            textStyle = TextStyle(
+                color = Color(0xFF1A1F2E),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp
+            ),
+            singleLine = true,
+            cursorBrush = SolidColor(Accent),
+            decorationBox = { innerTextField ->
+                if (value.isEmpty() && !focused) {
+                    Text(
+                        "type a value…",
+                        color = TextSecondary,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                innerTextField()
+            }
         )
     }
 }

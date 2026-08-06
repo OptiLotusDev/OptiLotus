@@ -183,7 +183,6 @@ fun BlockCanvas(
                         translationY = if (block.id == draggingId) draggedDeltaY else 0f
                     },
                 onSelect = { holder.selectBlock(block.id) },
-                onOpenInspector = { holder.selectBlock(block.id) },
                 onReorderStart = { id ->
                     holder.setDragInsert(id, j)
                     draggedDeltaY = 0f
