@@ -23,7 +23,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "dev.optilotus.app"
-            packageVersion = "1.0.0"
+            packageVersion = (project.findProperty("versionName") as? String) ?: "1.0.0"
         }
     }
 }

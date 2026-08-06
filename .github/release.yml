@@ -1,0 +1,17 @@
+changelog:
+  categories:
+    - title: "User Facing Changes"
+      labels:
+        - "major"
+        - "minor"
+        - "patch"
+
+    - title: "Internal & Infrastructure"
+      labels:
+        - "skip release"
+
+  exclude:
+    labels:
+      - "ignore-for-release"
+
+  format: "* ${title} (${number}) by @${author}"

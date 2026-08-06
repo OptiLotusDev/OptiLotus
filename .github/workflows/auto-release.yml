@@ -1,0 +1,91 @@
+name: Auto Release on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - master
+
+concurrency:
+  group: auto-release-master
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  draft-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Fetch All Remote Tags
+        run: git fetch --tags --force
+
+      - name: Determine Bump Type from Labels
+        id: bump_type
+        env:
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS_JSON" | jq -e 'any(. == "major")' > /dev/null; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$LABELS_JSON" | jq -e 'any(. == "minor")' > /dev/null; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$LABELS_JSON" | jq -e 'any(. == "patch")' > /dev/null; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "Release skipped via label selection."
+            echo "type=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate Next SemVer Tag
+        if: steps.bump_type.outputs.type != 'none'
+        id: semver
+        run: |
+          # git describe --match is a glob, not a regex: v1.2.3-rc1 would match and
+          # break the version arithmetic. Filter tags to strict SemVer with a regex instead.
+          LATEST_TAG=$(git tag --list --sort=-version:refname 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
+          LATEST_TAG=${LATEST_TAG:-v0.0.0}
+          echo "Latest SemVer tag: $LATEST_TAG"
+
+          VERSION="${LATEST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+
+          case "${{ steps.bump_type.outputs.type }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          
+          # Verify tag collision prior to release step
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "::error::Calculated tag $NEW_TAG already exists in git history!"
+            exit 1
+          fi
+
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.bump_type.outputs.type != 'none'
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          # A PAT is required: events created via GITHUB_TOKEN do not trigger
+          # other workflows, so release: published would never fire.
+          token: ${{ secrets.RELEASE_PAT }}
+          tag_name: ${{ steps.semver.outputs.new_tag }}
+          name: Release ${{ steps.semver.outputs.new_tag }}
+          target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
